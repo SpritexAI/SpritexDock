@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/SpritexAI/SpritexDock/internal/api"
+	"github.com/SpritexAI/SpritexDock/internal/auth"
 	"github.com/SpritexAI/SpritexDock/internal/config"
 	"github.com/SpritexAI/SpritexDock/internal/db"
 )
@@ -33,8 +34,15 @@ func main() {
 		}
 	}()
 
+	seedCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := auth.SeedOwner(seedCtx, state, os.Getenv("SPRITEXDOCK_ADMIN_USER"), os.Getenv("SPRITEXDOCK_ADMIN_PASS")); err != nil {
+		slog.Error("owner account initialization failed", "error", err)
+		os.Exit(1)
+	}
+
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	api.RegisterRoutes(app)
+	api.RegisterRoutes(app, state)
 
 	serverErrors := make(chan error, 1)
 	go func() {
