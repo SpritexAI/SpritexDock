@@ -10,7 +10,9 @@ func TestOpenAppliesInitialSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer state.Close()
+	defer func() {
+		_ = state.Close()
+	}()
 
 	var version int
 	if err := state.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
@@ -43,7 +45,9 @@ func TestOpenConfiguresSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer state.Close()
+	defer func() {
+		_ = state.Close()
+	}()
 
 	var foreignKeys int
 	if err := state.QueryRow("PRAGMA foreign_keys").Scan(&foreignKeys); err != nil {
@@ -77,7 +81,9 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer second.Close()
+	defer func() {
+		_ = second.Close()
+	}()
 
 	var count int
 	if err := second.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {

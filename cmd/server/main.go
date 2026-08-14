@@ -27,7 +27,11 @@ func main() {
 		slog.Error("database initialization failed", "error", err)
 		os.Exit(1)
 	}
-	defer state.Close()
+	defer func() {
+		if err := state.Close(); err != nil {
+			slog.Error("database close failed", "error", err)
+		}
+	}()
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	api.RegisterRoutes(app)

@@ -156,7 +156,9 @@ func (db *DB) applyMigration(migration migration) error {
 	if err != nil {
 		return fmt.Errorf("begin migration %04d: %w", migration.version, err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if _, err := tx.Exec(string(migration.body)); err != nil {
 		return fmt.Errorf("apply migration %s: %w", migration.name, err)
