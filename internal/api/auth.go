@@ -23,8 +23,8 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// registerAuthRoutes adds the authentication routes and returns the session store.
-func registerAuthRoutes(app *fiber.App, state *db.DB) *session.Store {
+// registerAuthRoutes adds the authentication routes and returns shared auth middleware.
+func registerAuthRoutes(app *fiber.App, state *db.DB) (*session.Store, fiber.Handler) {
 	sessions := session.New(session.Config{
 		KeyLookup:      "cookie:spritexdock_session",
 		Expiration:     24 * time.Hour,
@@ -54,7 +54,7 @@ func registerAuthRoutes(app *fiber.App, state *db.DB) *session.Store {
 	app.Get("/csrf", csrfMiddleware, csrfToken)
 	app.Post("/login", loginLimiter, loginHandler(state, sessions))
 	app.Post("/logout", csrfMiddleware, requireAuth(sessions), logoutHandler(sessions))
-	return sessions
+	return sessions, csrfMiddleware
 }
 
 func loginHandler(state *db.DB, sessions *session.Store) fiber.Handler {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/SpritexAI/SpritexDock/internal/config"
 	"github.com/SpritexAI/SpritexDock/internal/db"
 )
 
@@ -18,7 +19,7 @@ func TestHealthEndpoint(t *testing.T) {
 	defer func() { _ = state.Close() }()
 
 	app := fiber.New()
-	RegisterRoutes(app, state)
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
 
 	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/health", nil))
 	if err != nil {

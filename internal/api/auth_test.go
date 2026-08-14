@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/SpritexAI/SpritexDock/internal/auth"
+	"github.com/SpritexAI/SpritexDock/internal/config"
 	"github.com/SpritexAI/SpritexDock/internal/db"
 )
 
@@ -25,7 +26,7 @@ func TestLoginAndLogout(t *testing.T) {
 	}
 
 	app := fiber.New()
-	RegisterRoutes(app, state)
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
 
 	response := request(t, app, http.MethodPost, "/login", `{"username":"owner","password":"wrong password"}`, "")
 	if response.StatusCode != http.StatusUnauthorized {
@@ -80,7 +81,7 @@ func TestAuthenticationMiddlewareRejectsUnauthenticatedRequests(t *testing.T) {
 	defer func() { _ = state.Close() }()
 
 	app := fiber.New()
-	sessions := registerAuthRoutes(app, state)
+	sessions, _ := registerAuthRoutes(app, state)
 	app.Get("/protected", requireAuth(sessions), func(c *fiber.Ctx) error {
 		return c.SendStatus(http.StatusNoContent)
 	})
@@ -104,7 +105,7 @@ func TestLoginRateLimit(t *testing.T) {
 	}
 
 	app := fiber.New()
-	RegisterRoutes(app, state)
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
 	for attempt := 0; attempt < 5; attempt++ {
 		response := request(t, app, http.MethodPost, "/login", `{"username":"owner","password":"wrong"}`, "")
 		if response.StatusCode != http.StatusUnauthorized {

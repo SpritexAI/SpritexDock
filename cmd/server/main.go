@@ -42,7 +42,7 @@ func main() {
 	}
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	api.RegisterRoutes(app, state)
+	api.RegisterRoutes(app, state, cfg)
 
 	serverErrors := make(chan error, 1)
 	go func() {
