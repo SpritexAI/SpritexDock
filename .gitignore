@@ -1,0 +1,37 @@
+# Local coding-agent instructions and planning notes
+AGENT.md
+CLAUDE.md
+CI.md
+ROADMAP.md
+WORKLOGS.md
+ARCHITECTURE.md
+CONVENTIONS.md
+DECISIONS.md
+ENV.md
+TESTING.md
+SECURITY.md
+project-prd.md
+
+# Separate deployment fixture repository
+test-app/
+
+# Go outputs
+/spritexdock
+/dist/
+*.test
+*.out
+coverage.txt
+
+# Local application state
+*.db
+*.db-shm
+*.db-wal
+
+# Frontend dependencies and generated assets
+node_modules/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

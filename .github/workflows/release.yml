@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Go project
+        id: source
+        shell: bash
+        run: |
+          if [[ -f go.mod && -f cmd/server/main.go ]]; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.source.outputs.exists == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release binaries
+        if: steps.source.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for GOOS in linux darwin; do
+            for GOARCH in amd64 arm64; do
+              output="dist/spritexdock-${GOOS}-${GOARCH}"
+              GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags='-s -w' -o "$output" ./cmd/server
+            done
+          done
+
+      - name: Create checksums
+        if: steps.source.outputs.exists == 'true'
+        working-directory: dist
+        run: sha256sum spritexdock-* > checksums.txt
+
+      - name: Publish GitHub release
+        if: steps.source.outputs.exists == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

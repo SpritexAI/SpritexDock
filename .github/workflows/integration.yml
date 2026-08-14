@@ -1,0 +1,57 @@
+name: Integration
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - 'internal/docker/**'
+      - 'internal/deployment/**'
+      - '.github/workflows/integration.yml'
+  pull_request:
+    branches: [dev]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - 'internal/docker/**'
+      - 'internal/deployment/**'
+      - '.github/workflows/integration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Go source
+        id: source
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.source.outputs.exists == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify Docker
+        if: steps.source.outputs.exists == 'true'
+        run: docker info
+
+      - name: Run integration tests
+        if: steps.source.outputs.exists == 'true'
+        run: go test -tags=integration -timeout=10m ./...

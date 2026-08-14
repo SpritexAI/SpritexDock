@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'migrations/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [dev]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'migrations/**'
+      - '.github/workflows/ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Go source
+        id: source
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.source.outputs.exists == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        if: steps.source.outputs.exists == 'true'
+        run: go build ./...
+
+      - name: Test with race detector
+        if: steps.source.outputs.exists == 'true'
+        run: go test -race -coverprofile=coverage.txt ./...
+
+      - name: Upload coverage
+        if: steps.source.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.txt

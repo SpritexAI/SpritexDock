@@ -1,0 +1,63 @@
+name: Lint
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/lint.yml'
+  pull_request:
+    branches: [dev]
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/lint.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Go source
+        id: source
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.source.outputs.exists == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        if: steps.source.outputs.exists == 'true'
+        shell: bash
+        run: |
+          files=$(gofmt -l .)
+          if [[ -n "$files" ]]; then
+            printf '%s\n' "$files"
+            exit 1
+          fi
+
+      - name: Run go vet
+        if: steps.source.outputs.exists == 'true'
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        if: steps.source.outputs.exists == 'true'
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1
