@@ -12,6 +12,7 @@ import (
 
 	"github.com/SpritexAI/SpritexDock/internal/api"
 	"github.com/SpritexAI/SpritexDock/internal/config"
+	"github.com/SpritexAI/SpritexDock/internal/db"
 )
 
 func main() {
@@ -20,6 +21,13 @@ func main() {
 		slog.Error("configuration failed", "error", err)
 		os.Exit(1)
 	}
+
+	state, err := db.Open(cfg.DataDir)
+	if err != nil {
+		slog.Error("database initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer state.Close()
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	api.RegisterRoutes(app)
