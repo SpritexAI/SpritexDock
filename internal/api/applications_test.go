@@ -27,7 +27,7 @@ func TestApplicationRoutes(t *testing.T) {
 	}
 
 	app := fiber.New()
-	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"}, nil)
 
 	response := request(t, app, http.MethodGet, "/applications", nil, "")
 	if response.StatusCode != http.StatusUnauthorized {
@@ -117,7 +117,7 @@ func TestApplicationValidationAndConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := fiber.New()
-	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"}, nil)
 	cookies := loginForApplications(t, app)
 	csrfToken, cookies := csrfForApplications(t, app, cookies)
 

@@ -16,6 +16,7 @@ import (
 	"github.com/SpritexAI/SpritexDock/internal/db"
 	"github.com/SpritexAI/SpritexDock/internal/deployment"
 	"github.com/SpritexAI/SpritexDock/internal/docker"
+	"github.com/SpritexAI/SpritexDock/internal/worker"
 )
 
 func main() {
@@ -62,7 +63,8 @@ func main() {
 	pingCancel()
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	api.RegisterRoutes(app, state, cfg)
+	deployWorker := worker.New(state, &docker.ClientAdapter{Real: dockerClient}, cfg)
+	api.RegisterRoutes(app, state, cfg, deployWorker)
 
 	serverErrors := make(chan error, 1)
 	go func() {

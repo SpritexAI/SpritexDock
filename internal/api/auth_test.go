@@ -26,7 +26,7 @@ func TestLoginAndLogout(t *testing.T) {
 	}
 
 	app := fiber.New()
-	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"}, nil)
 
 	response := request(t, app, http.MethodPost, "/login", `{"username":"owner","password":"wrong password"}`, "")
 	if response.StatusCode != http.StatusUnauthorized {
@@ -105,7 +105,7 @@ func TestLoginRateLimit(t *testing.T) {
 	}
 
 	app := fiber.New()
-	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"}, nil)
 	for attempt := 0; attempt < 5; attempt++ {
 		response := request(t, app, http.MethodPost, "/login", `{"username":"owner","password":"wrong"}`, "")
 		if response.StatusCode != http.StatusUnauthorized {

@@ -19,7 +19,7 @@ func TestHealthEndpoint(t *testing.T) {
 	defer func() { _ = state.Close() }()
 
 	app := fiber.New()
-	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"})
+	RegisterRoutes(app, state, &config.Config{PublicIP: "203.0.113.10"}, nil)
 
 	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/health", nil))
 	if err != nil {
