@@ -108,7 +108,7 @@ func Build(ctx context.Context, cli *client.Client, req BuildRequest) (result Bu
 	if err != nil {
 		return result, fmt.Errorf("start docker build: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	var logs boundedBuffer
 	logs.limit = limits.LogBytes
@@ -143,7 +143,7 @@ func validateBuildRequest(req BuildRequest) error {
 		return fmt.Errorf("build context: %w", err)
 	}
 	if err := validateRelativePath(req.DockerfilePath); err != nil {
-		return fmt.Errorf("Dockerfile path: %w", err)
+		return fmt.Errorf("dockerfile path: %w", err)
 	}
 	if req.CommitSHA != "" && !regexp.MustCompile(`^[a-fA-F0-9]{7,64}$`).MatchString(req.CommitSHA) {
 		return fmt.Errorf("invalid commit SHA")
@@ -205,7 +205,7 @@ func archiveContext(workspace, contextPath, dockerfilePath string) (io.Reader, s
 	}
 	dockerfile := filepath.ToSlash(filepath.Clean(dockerfilePath))
 	if _, err := filepath.Rel(".", dockerfile); err != nil || strings.HasPrefix(dockerfile, "../") || dockerfile == ".." {
-		return nil, "", fmt.Errorf("Dockerfile path escapes build context")
+		return nil, "", fmt.Errorf("dockerfile path escapes build context")
 	}
 	if dockerfile, err = dockerfilePathWithinContext(resolvedRoot, dockerfile); err != nil {
 		return nil, "", err
@@ -281,17 +281,17 @@ func dockerfilePathWithinContext(root, dockerfile string) (string, error) {
 	candidate := filepath.Join(root, filepath.FromSlash(dockerfile))
 	resolved, err := filepath.EvalSymlinks(candidate)
 	if err != nil {
-		return "", fmt.Errorf("resolve Dockerfile: %w", err)
+		return "", fmt.Errorf("resolve dockerfile: %w", err)
 	}
 	if !withinPath(root, resolved) {
-		return "", fmt.Errorf("Dockerfile path escapes build context")
+		return "", fmt.Errorf("dockerfile path escapes build context")
 	}
 	info, err := os.Stat(resolved)
 	if err != nil {
-		return "", fmt.Errorf("stat Dockerfile: %w", err)
+		return "", fmt.Errorf("stat dockerfile: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("Dockerfile must be a regular file")
+		return "", fmt.Errorf("dockerfile must be a regular file")
 	}
 	return filepath.ToSlash(filepath.Clean(dockerfile)), nil
 }

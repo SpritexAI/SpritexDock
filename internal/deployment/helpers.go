@@ -30,7 +30,7 @@ func ActiveDeploymentIDs(ctx context.Context, state *db.DB, appID string) ([]str
 	if err != nil {
 		return nil, fmt.Errorf("active deployment ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []string
 	for rows.Next() {
@@ -77,7 +77,7 @@ func ListByApplication(ctx context.Context, state *db.DB, appID string) ([]*Depl
 	if err != nil {
 		return nil, fmt.Errorf("list deployments by application: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var items []*Deployment
 	for rows.Next() {

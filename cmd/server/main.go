@@ -53,7 +53,7 @@ func main() {
 		slog.Error("docker client initialization failed", "error", err)
 		os.Exit(1)
 	}
-	defer dockerClient.Close()
+	defer func() { _ = dockerClient.Close() }()
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := docker.Ping(pingCtx, dockerClient); err != nil {
 		pingCancel()

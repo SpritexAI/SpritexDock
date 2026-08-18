@@ -269,9 +269,8 @@ func (w *Worker) run(ctx context.Context, req RunRequest) (RunResult, error) {
 	return result, nil
 }
 
-func (w *Worker) build(ctx context.Context, req RunRequest) (imageRef, logs string, err error) {
-	imageRef, err = docker.ImageReference(req.Slug, req.DeploymentID)
-	if err != nil {
+func (w *Worker) build(ctx context.Context, req RunRequest) (string, string, error) {
+	if _, err := docker.ImageReference(req.Slug, req.DeploymentID); err != nil {
 		return "", "", fmt.Errorf("generate image reference: %w", err)
 	}
 
@@ -363,7 +362,7 @@ func LoadEnvVars(ctx context.Context, state *db.DB, applicationID string) ([]str
 	if err != nil {
 		return nil, fmt.Errorf("load environment variables: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var vars []string
 	for rows.Next() {
