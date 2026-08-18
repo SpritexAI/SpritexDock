@@ -14,6 +14,8 @@ import (
 	"github.com/SpritexAI/SpritexDock/internal/auth"
 	"github.com/SpritexAI/SpritexDock/internal/config"
 	"github.com/SpritexAI/SpritexDock/internal/db"
+	"github.com/SpritexAI/SpritexDock/internal/deployment"
+	"github.com/SpritexAI/SpritexDock/internal/docker"
 )
 
 func main() {
@@ -40,6 +42,24 @@ func main() {
 		slog.Error("owner account initialization failed", "error", err)
 		os.Exit(1)
 	}
+	if _, err := deployment.RecoverInterrupted(seedCtx, state); err != nil {
+		slog.Error("deployment recovery failed", "error", err)
+		os.Exit(1)
+	}
+
+	dockerClient, err := docker.NewClient(cfg.DockerEndpoint)
+	if err != nil {
+		slog.Error("docker client initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer dockerClient.Close()
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := docker.Ping(pingCtx, dockerClient); err != nil {
+		pingCancel()
+		slog.Error("docker engine unavailable", "error", err)
+		os.Exit(1)
+	}
+	pingCancel()
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	api.RegisterRoutes(app, state, cfg)
