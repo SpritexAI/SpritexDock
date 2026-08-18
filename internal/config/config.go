@@ -9,15 +9,17 @@ import (
 
 // Config contains validated control-plane settings.
 type Config struct {
-	Listen         string
-	PublicIP       string
-	DataDir        string
-	DockerEndpoint string
-	CaddyAdmin     string
-	BuildMemLimit  int64
-	BuildCPULimit  float64
-	BuildTimeout   time.Duration
-	LogRetention   time.Duration
+	Listen          string
+	PublicIP        string
+	DataDir         string
+	DockerEndpoint  string
+	CaddyAdmin      string
+	BuildMemLimit   int64
+	BuildCPULimit   float64
+	BuildTimeout    time.Duration
+	RuntimeMemLimit int64
+	RuntimeCPULimit float64
+	LogRetention    time.Duration
 }
 
 // Load reads configuration from SPRITEXDOCK_* environment variables.
@@ -38,6 +40,12 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.BuildTimeout, err = parsePositiveDuration("SPRITEXDOCK_BUILD_TIMEOUT", 15*time.Minute); err != nil {
+		return nil, err
+	}
+	if cfg.RuntimeMemLimit, err = parsePositiveInt("SPRITEXDOCK_RUNTIME_MEM_LIMIT", 512*1024*1024); err != nil {
+		return nil, err
+	}
+	if cfg.RuntimeCPULimit, err = parsePositiveFloat("SPRITEXDOCK_RUNTIME_CPU_LIMIT", 1); err != nil {
 		return nil, err
 	}
 	if cfg.LogRetention, err = parsePositiveDuration("SPRITEXDOCK_LOG_RETENTION", 30*24*time.Hour); err != nil {

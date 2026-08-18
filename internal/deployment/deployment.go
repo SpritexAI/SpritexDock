@@ -35,6 +35,7 @@ type Deployment struct {
 	TriggerType       string  `json:"trigger_type"`
 	Status            string  `json:"status"`
 	ImageReference    *string `json:"image_reference,omitempty"`
+	ContainerID       *string `json:"container_id,omitempty"`
 	StartedAt         *string `json:"started_at,omitempty"`
 	FinishedAt        *string `json:"finished_at,omitempty"`
 	FailureReason     *string `json:"failure_reason,omitempty"`
@@ -71,11 +72,11 @@ func Get(ctx context.Context, state *db.DB, id string) (*Deployment, error) {
 	item := &Deployment{}
 	err := state.QueryRowContext(ctx, `
 		SELECT id, application_id, revision_commit_sha, trigger_type, status,
-		       image_reference, started_at, finished_at, failure_reason, created_at
+		       image_reference, container_id, started_at, finished_at, failure_reason, created_at
 		FROM deployments WHERE id = ?
 	`, id).Scan(
 		&item.ID, &item.ApplicationID, &item.RevisionCommitSHA, &item.TriggerType, &item.Status,
-		&item.ImageReference, &item.StartedAt, &item.FinishedAt, &item.FailureReason, &item.CreatedAt,
+		&item.ImageReference, &item.ContainerID, &item.StartedAt, &item.FinishedAt, &item.FailureReason, &item.CreatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -172,6 +173,11 @@ func allowedTransition(current, next string) bool {
 	default:
 		return false
 	}
+}
+
+// IsNotFound reports whether err is ErrNotFound.
+func IsNotFound(err error) bool {
+	return errors.Is(err, ErrNotFound)
 }
 
 func sanitizeReason(reason string) string {
