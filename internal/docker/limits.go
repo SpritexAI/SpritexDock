@@ -10,7 +10,13 @@ const (
 	defaultLogLimit = 1 << 20
 	maxLogLimit     = 16 << 20
 	maxBuildPIDs    = 1024
+	maxRuntimePIDs  = 4096
 )
+
+// MaxPIDs returns the default maximum PID limit for runtime containers.
+func MaxPIDs() int64 {
+	return maxRuntimePIDs
+}
 
 // Limits are the bounded settings applied to one build.
 type Limits struct {

@@ -304,6 +304,11 @@ func removeImage(ctx context.Context, cli *client.Client, reference string) erro
 	return err
 }
 
+// RemoveImage removes a local image by reference. NotFound is treated as success.
+func RemoveImage(ctx context.Context, cli *client.Client, reference string) error {
+	return removeImage(ctx, cli, reference)
+}
+
 type boundedBuffer struct {
 	bytes.Buffer
 	limit int64
