@@ -134,3 +134,93 @@ func TestMissingUpdate(t *testing.T) {
 		t.Fatalf("missing update error = %v", err)
 	}
 }
+
+func TestGetAccessibleURLs(t *testing.T) {
+	state, err := db.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = state.Close() }()
+	ctx := context.Background()
+
+	created, err := Create(ctx, state, Input{Name: "My App", Slug: "my-app", RepositoryURL: "https://github.com/example/app.git", ExposedPort: 8080}, "203.0.113.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	urls, err := created.GetAccessibleURLs(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(urls) != 1 || urls[0] != "https://my-app.203-0-113-10.sslip.io" {
+		t.Fatalf("urls without domains = %v", urls)
+	}
+
+	now := "2026-08-18T00:00:00Z"
+	domains := []struct {
+		hostname string
+		status   string
+	}{
+		{"alpha.example.com", "verified"},
+		{"beta.example.com", "verified"},
+		{"gamma.example.com", "pending"},
+		{"delta.example.com", "failed"},
+	}
+	for _, item := range domains {
+		if _, err := state.Exec(`INSERT INTO domains
+			(id, application_id, hostname, type, verification_status, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			"dom-"+item.hostname, created.ID, item.hostname, "custom", item.status, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	urls, err = created.GetAccessibleURLs(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"https://my-app.203-0-113-10.sslip.io",
+		"https://alpha.example.com",
+		"https://beta.example.com",
+	}
+	if len(urls) != len(want) {
+		t.Fatalf("urls = %v, want %v", urls, want)
+	}
+	for i := range want {
+		if urls[i] != want[i] {
+			t.Fatalf("urls = %v, want %v", urls, want)
+		}
+	}
+}
+
+func TestSetCurrentDeployedURL(t *testing.T) {
+	state, err := db.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = state.Close() }()
+	ctx := context.Background()
+
+	created, err := Create(ctx, state, Input{Name: "My App", Slug: "my-app", RepositoryURL: "https://github.com/example/app.git", ExposedPort: 8080}, "203.0.113.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deployed := "https://my-app.203-0-113-10.sslip.io"
+	if err := SetCurrentDeployedURL(ctx, state, created.ID, deployed); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Get(ctx, state, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CurrentDeployedURL == nil || *got.CurrentDeployedURL != deployed {
+		t.Fatalf("current_deployed_url = %v, want %q", got.CurrentDeployedURL, deployed)
+	}
+
+	if err := SetCurrentDeployedURL(ctx, state, created.ID, ""); err == nil {
+		t.Fatal("empty URL must be rejected")
+	}
+}

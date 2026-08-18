@@ -92,8 +92,16 @@ func TestDeploymentAPIFlow(t *testing.T) {
 		RuntimeCPULimit: 1.0,
 	}
 
-	mockDockerOp := &mockDockerAdapter{}
-	deployWorker := worker.New(state, mockDockerOp, cfg)
+	buildStarted := make(chan struct{})
+	releaseBuild := make(chan struct{})
+	mockDockerOp := &mockDockerAdapter{
+		buildFn: func(ctx context.Context, req docker.BuildRequest) (docker.BuildResult, error) {
+			close(buildStarted)
+			<-releaseBuild
+			return docker.BuildResult{ImageReference: "spritexdock/" + req.ApplicationSlug + ":" + req.DeploymentID}, nil
+		},
+	}
+	deployWorker := worker.New(state, mockDockerOp, nil, cfg)
 
 	app := fiber.New()
 	RegisterRoutes(app, state, cfg, deployWorker)
@@ -137,6 +145,9 @@ func TestDeploymentAPIFlow(t *testing.T) {
 	}
 	_ = response.Body.Close()
 
+	// Wait for first build to start, ensuring it is in-progress/active.
+	<-buildStarted
+
 	// Try triggering a second deployment immediately - expect StatusConflict (409)
 	deployReq2 := httptest.NewRequest(http.MethodPost, "/applications/"+createdApp.ID+"/deployments", strings.NewReader(`{"revision_commit_sha":"1234567890abcdef1234567890abcdef12345678","trigger_type":"webhook"}`))
 	deployReq2.Header.Set("Content-Type", "application/json")
@@ -151,8 +162,11 @@ func TestDeploymentAPIFlow(t *testing.T) {
 	}
 	_ = response.Body.Close()
 
+	// Release block to let first deployment finish
+	close(releaseBuild)
+
 	// Wait for background deployment to progress to running
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Get deployment list
 	listReq := httptest.NewRequest(http.MethodGet, "/applications/"+createdApp.ID+"/deployments", nil)

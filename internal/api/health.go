@@ -16,6 +16,9 @@ func RegisterRoutes(app *fiber.App, state *db.DB, cfg *config.Config, deployWork
 	registerApplicationRoutes(app, state, cfg, sessions, csrfMiddleware)
 	if deployWorker != nil {
 		registerDeploymentRoutes(app, state, deployWorker, sessions, csrfMiddleware)
+		registerDomainRoutes(app, state, cfg, deployWorker.Router, sessions, csrfMiddleware)
+	} else {
+		registerDomainRoutes(app, state, cfg, nil, sessions, csrfMiddleware)
 	}
 }
 

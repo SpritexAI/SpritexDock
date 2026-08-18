@@ -12,6 +12,8 @@ import (
 	"github.com/SpritexAI/SpritexDock/internal/db"
 	"github.com/SpritexAI/SpritexDock/internal/deployment"
 	"github.com/SpritexAI/SpritexDock/internal/docker"
+	"github.com/SpritexAI/SpritexDock/internal/domain"
+	"github.com/SpritexAI/SpritexDock/internal/proxy"
 )
 
 // Worker is the deployment orchestration worker.
@@ -19,15 +21,19 @@ type Worker struct {
 	mu       sync.Mutex
 	state    *db.DB
 	docker   docker.Operation
+	Router   proxy.Router
 	cfg      *config.Config
 	inFlight map[string]bool
 }
 
-// New creates a Worker backed by the given state, docker client, and config.
-func New(state *db.DB, d docker.Operation, cfg *config.Config) *Worker {
+// New creates a Worker backed by the given state, docker client, proxy
+// router, and config. A nil router disables proxy-route management (used in
+// tests).
+func New(state *db.DB, d docker.Operation, router proxy.Router, cfg *config.Config) *Worker {
 	return &Worker{
 		state:    state,
 		docker:   d,
+		Router:   router,
 		cfg:      cfg,
 		inFlight: make(map[string]bool),
 	}
@@ -35,17 +41,18 @@ func New(state *db.DB, d docker.Operation, cfg *config.Config) *Worker {
 
 // RunRequest holds all inputs required to execute one deployment.
 type RunRequest struct {
-	DeploymentID   string
-	ApplicationID  string
-	Slug           string
-	RepositoryURL  string
-	Branch         string
-	CommitSHA      string
-	DockerfilePath string
-	BuildContext   string
-	ExposedPort    int
-	EnvVars        []string
-	TriggerType    string
+	DeploymentID      string
+	ApplicationID     string
+	Slug              string
+	GeneratedHostname string
+	RepositoryURL     string
+	Branch            string
+	CommitSHA         string
+	DockerfilePath    string
+	BuildContext      string
+	ExposedPort       int
+	EnvVars           []string
+	TriggerType       string
 }
 
 // RunResult records the final outcome and any cleanup errors observed.
@@ -105,17 +112,18 @@ func (w *Worker) Enqueue(ctx context.Context, app *application.Application, revi
 	}
 
 	req := RunRequest{
-		DeploymentID:   item.ID,
-		ApplicationID:  app.ID,
-		Slug:           app.Slug,
-		RepositoryURL:  app.RepositoryURL,
-		Branch:         app.Branch,
-		CommitSHA:      revisionSHA,
-		DockerfilePath: app.DockerfilePath,
-		BuildContext:   app.BuildContext,
-		ExposedPort:    app.ExposedPort,
-		EnvVars:        envVars,
-		TriggerType:    triggerType,
+		DeploymentID:      item.ID,
+		ApplicationID:     app.ID,
+		Slug:              app.Slug,
+		GeneratedHostname: app.GeneratedHostname,
+		RepositoryURL:     app.RepositoryURL,
+		Branch:            app.Branch,
+		CommitSHA:         revisionSHA,
+		DockerfilePath:    app.DockerfilePath,
+		BuildContext:      app.BuildContext,
+		ExposedPort:       app.ExposedPort,
+		EnvVars:           envVars,
+		TriggerType:       triggerType,
 	}
 
 	go func() {
@@ -241,10 +249,31 @@ func (w *Worker) run(ctx context.Context, req RunRequest) (RunResult, error) {
 	result.ContainerID = containerID
 	result.DeploySuccess = true
 
-	// Step 5: confirm running and persist container + current-deployment pointer.
+	// Step 5: confirm running and persist container.
 	if err := deployment.SetContainerID(ctx, w.state, req.DeploymentID, containerID); err != nil {
 		slog.WarnContext(ctx, "worker: failed to record container id", "deployment", req.DeploymentID, "error", err)
 	}
+
+	// Step 6: activate proxy routes. If Caddy is unreachable, we fail the
+	// deployment cleanly, removing the new container to avoid orphans
+	// (PRD §7.6, §12).
+	if w.Router != nil {
+		if err := w.Router.AddRoute(ctx, req.GeneratedHostname, req.ExposedPort); err != nil {
+			routeErr := fmt.Errorf("proxy route for %s: %w", req.GeneratedHostname, err)
+			slog.ErrorContext(ctx, "worker: route activation failed", "deployment", req.DeploymentID, "error", err)
+			if terr := deployment.Transition(ctx, w.state, req.DeploymentID, deployment.StatusFailed, imageRef, routeErr.Error()); terr != nil {
+				slog.ErrorContext(ctx, "worker: failed to record route failure", "deployment", req.DeploymentID, "error", terr)
+			}
+			result.DeploySuccess = false
+			result.DeployError = routeErr
+			result.CleanupError = w.cleanupOnFailure(ctx, req, imageRef)
+			return result, result.DeployError
+		}
+		if err := domain.ActivateVerifiedRoutes(ctx, w.state, w.Router, req.ApplicationID, req.ExposedPort); err != nil {
+			slog.WarnContext(ctx, "worker: custom domain routes failed", "deployment", req.DeploymentID, "error", err)
+		}
+	}
+
 	if err := deployment.SetCurrentDeployment(ctx, w.state, req.ApplicationID, req.DeploymentID); err != nil {
 		slog.WarnContext(ctx, "worker: failed to update current deployment", "deployment", req.DeploymentID, "error", err)
 	}
@@ -253,8 +282,11 @@ func (w *Worker) run(ctx context.Context, req RunRequest) (RunResult, error) {
 		result.CleanupError = w.cleanupOnFailure(ctx, req, imageRef)
 		return result, result.DeployError
 	}
+	if err := application.SetCurrentDeployedURL(ctx, w.state, req.ApplicationID, "https://"+req.GeneratedHostname); err != nil {
+		slog.WarnContext(ctx, "worker: failed to record deployed url", "deployment", req.DeploymentID, "error", err)
+	}
 
-	// Step 6: stop the previous container only now that the new one is
+	// Step 7: stop the previous container only now that the new one is
 	// confirmed running (PRD §7.3 ordering rule).
 	if stopErr := w.stopPreviousContainer(ctx, req); stopErr != nil {
 		slog.WarnContext(ctx, "worker: failed to stop previous container", "deployment", req.DeploymentID, "error", stopErr)
@@ -349,6 +381,53 @@ func (w *Worker) cleanupOnFailure(ctx context.Context, req RunRequest, imageRef 
 		return fmt.Errorf("cleanup errors: %v", errs)
 	}
 	return nil
+}
+
+// RebuildRoutes queries the control plane database to rebuild all active
+// proxy routes in the edge router at startup, reconciling proxy state with the
+// source of truth (DR-003). It returns the reconciled routes count.
+func (w *Worker) RebuildRoutes(ctx context.Context) (int, error) {
+	if w.Router == nil {
+		return 0, nil
+	}
+
+	apps, err := application.List(ctx, w.state)
+	if err != nil {
+		return 0, fmt.Errorf("list applications: %w", err)
+	}
+
+	var routes []proxy.Route
+	for _, app := range apps {
+		if app.CurrentDeploymentID == nil || *app.CurrentDeploymentID == "" {
+			continue
+		}
+		current, err := deployment.Get(ctx, w.state, *app.CurrentDeploymentID)
+		if err != nil {
+			slog.WarnContext(ctx, "route rebuild: missing deployment pointer", "application", app.ID, "deployment", *app.CurrentDeploymentID, "error", err)
+			continue
+		}
+		if current.Status != deployment.StatusRunning || current.ContainerID == nil || *current.ContainerID == "" {
+			continue
+		}
+
+		// Re-apply the generated URL route.
+		routes = append(routes, proxy.Route{Hostname: app.GeneratedHostname, TargetPort: app.ExposedPort})
+
+		// Re-apply all verified custom domain routes on the application's exposed port.
+		customs, err := domain.ListVerified(ctx, w.state, app.ID)
+		if err != nil {
+			slog.WarnContext(ctx, "route rebuild: failed to list custom domains", "application", app.ID, "error", err)
+			continue
+		}
+		for _, custom := range customs {
+			routes = append(routes, proxy.Route{Hostname: custom, TargetPort: app.ExposedPort})
+		}
+	}
+
+	if err := w.Router.Sync(ctx, routes); err != nil {
+		return 0, fmt.Errorf("sync caddy config: %w", err)
+	}
+	return len(routes), nil
 }
 
 // LoadEnvVars returns the application's environment variables as KEY=VALUE

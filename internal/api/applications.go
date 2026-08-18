@@ -40,6 +40,12 @@ func listApplicationsHandler(state *db.DB) fiber.Handler {
 		if applications == nil {
 			applications = []*application.Application{}
 		}
+		for _, app := range applications {
+			urls, err := app.GetAccessibleURLs(ctx, state)
+			if err == nil {
+				app.AccessibleURLs = urls
+			}
+		}
 		return c.JSON(applications)
 	}
 }
@@ -54,6 +60,10 @@ func getApplicationHandler(state *db.DB) fiber.Handler {
 		}
 		if err != nil {
 			return applicationInternalError(c)
+		}
+		urls, err := item.GetAccessibleURLs(ctx, state)
+		if err == nil {
+			item.AccessibleURLs = urls
 		}
 		return c.JSON(item)
 	}
@@ -76,6 +86,10 @@ func createApplicationHandler(state *db.DB, publicIP string) fiber.Handler {
 		}
 		if err != nil {
 			return applicationInternalError(c)
+		}
+		urls, err := item.GetAccessibleURLs(ctx, state)
+		if err == nil {
+			item.AccessibleURLs = urls
 		}
 		return c.Status(http.StatusCreated).JSON(item)
 	}
@@ -101,6 +115,10 @@ func updateApplicationHandler(state *db.DB, publicIP string) fiber.Handler {
 		}
 		if err != nil {
 			return applicationInternalError(c)
+		}
+		urls, err := item.GetAccessibleURLs(ctx, state)
+		if err == nil {
+			item.AccessibleURLs = urls
 		}
 		return c.JSON(item)
 	}

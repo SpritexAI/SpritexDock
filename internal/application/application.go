@@ -35,19 +35,21 @@ const (
 
 // Application is the persisted application configuration.
 type Application struct {
-	ID                  string  `json:"id"`
-	Name                string  `json:"name"`
-	Slug                string  `json:"slug"`
-	RepositoryURL       string  `json:"repository_url"`
-	Branch              string  `json:"branch"`
-	DockerfilePath      string  `json:"dockerfile_path"`
-	BuildContext        string  `json:"build_context"`
-	ExposedPort         int     `json:"exposed_port"`
-	GeneratedHostname   string  `json:"generated_hostname"`
-	CurrentDeploymentID *string `json:"current_deployment_id,omitempty"`
-	Status              string  `json:"status"`
-	CreatedAt           string  `json:"created_at"`
-	UpdatedAt           string  `json:"updated_at"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	Slug                string   `json:"slug"`
+	RepositoryURL       string   `json:"repository_url"`
+	Branch              string   `json:"branch"`
+	DockerfilePath      string   `json:"dockerfile_path"`
+	BuildContext        string   `json:"build_context"`
+	ExposedPort         int      `json:"exposed_port"`
+	GeneratedHostname   string   `json:"generated_hostname"`
+	CurrentDeploymentID *string  `json:"current_deployment_id,omitempty"`
+	CurrentDeployedURL  *string  `json:"current_deployed_url,omitempty"`
+	Status              string   `json:"status"`
+	AccessibleURLs      []string `json:"accessible_urls,omitempty"`
+	CreatedAt           string   `json:"created_at"`
+	UpdatedAt           string   `json:"updated_at"`
 }
 
 // Input contains fields accepted when creating or updating an application.
@@ -269,7 +271,7 @@ func isUniqueApplicationError(err error) bool {
 }
 
 const applicationSelect = `
-	SELECT id, name, slug, repository_url, branch, dockerfile_path, build_context, exposed_port, generated_hostname, current_deployment_id, status, created_at, updated_at
+	SELECT id, name, slug, repository_url, branch, dockerfile_path, build_context, exposed_port, generated_hostname, current_deployment_id, current_deployed_url, status, created_at, updated_at
 	FROM applications`
 
 type rowScanner interface {
@@ -277,5 +279,54 @@ type rowScanner interface {
 }
 
 func scanApplication(row rowScanner, app *Application) error {
-	return row.Scan(&app.ID, &app.Name, &app.Slug, &app.RepositoryURL, &app.Branch, &app.DockerfilePath, &app.BuildContext, &app.ExposedPort, &app.GeneratedHostname, &app.CurrentDeploymentID, &app.Status, &app.CreatedAt, &app.UpdatedAt)
+	return row.Scan(&app.ID, &app.Name, &app.Slug, &app.RepositoryURL, &app.Branch, &app.DockerfilePath, &app.BuildContext, &app.ExposedPort, &app.GeneratedHostname, &app.CurrentDeploymentID, &app.CurrentDeployedURL, &app.Status, &app.CreatedAt, &app.UpdatedAt)
+}
+
+// AccessibleURL returns the HTTPS URL of the generated sslip.io hostname.
+func (a *Application) AccessibleURL() string {
+	return "https://" + a.GeneratedHostname
+}
+
+// GetAccessibleURLs returns the generated URL followed by the URLs of all
+// verified custom domains. It queries the domains table directly to avoid a
+// dependency cycle with the domain package.
+func (a *Application) GetAccessibleURLs(ctx context.Context, state *db.DB) ([]string, error) {
+	rows, err := state.QueryContext(ctx, `
+		SELECT hostname FROM domains
+		WHERE application_id = ? AND type = 'custom' AND verification_status = 'verified'
+		ORDER BY hostname ASC
+	`, a.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list accessible urls: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	urls := []string{a.AccessibleURL()}
+	for rows.Next() {
+		var hostname string
+		if err := rows.Scan(&hostname); err != nil {
+			return nil, fmt.Errorf("scan accessible url: %w", err)
+		}
+		urls = append(urls, "https://"+hostname)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate accessible urls: %w", err)
+	}
+	return urls, nil
+}
+
+// SetCurrentDeployedURL records the application's currently-serving generated
+// URL after a successful deployment.
+func SetCurrentDeployedURL(ctx context.Context, state *db.DB, id, url string) error {
+	if id == "" || url == "" {
+		return fmt.Errorf("application id and deployed url are required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := state.ExecContext(ctx, `
+		UPDATE applications SET current_deployed_url = ?, updated_at = ? WHERE id = ?
+	`, url, now, id)
+	if err != nil {
+		return fmt.Errorf("set current deployed url: %w", err)
+	}
+	return nil
 }

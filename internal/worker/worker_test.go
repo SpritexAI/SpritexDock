@@ -79,7 +79,7 @@ func newTestWorker(t *testing.T) (*Worker, *db.DB) {
 		RuntimeCPULimit: 1.0,
 	}
 	mock := &mockDocker{}
-	w := New(state, mock, cfg)
+	w := New(state, mock, nil, cfg)
 	return w, state
 }
 

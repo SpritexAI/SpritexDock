@@ -16,6 +16,7 @@ import (
 	"github.com/SpritexAI/SpritexDock/internal/db"
 	"github.com/SpritexAI/SpritexDock/internal/deployment"
 	"github.com/SpritexAI/SpritexDock/internal/docker"
+	"github.com/SpritexAI/SpritexDock/internal/proxy"
 	"github.com/SpritexAI/SpritexDock/internal/worker"
 )
 
@@ -63,7 +64,18 @@ func main() {
 	pingCancel()
 
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	deployWorker := worker.New(state, &docker.ClientAdapter{Real: dockerClient}, cfg)
+	caddyRouter := proxy.NewCaddyRouter(cfg.CaddyAdmin)
+	deployWorker := worker.New(state, &docker.ClientAdapter{Real: dockerClient}, caddyRouter, cfg)
+
+	// Synchronize active proxy routes at startup (PRD §7.6, §13 #11).
+	syncCtx, syncCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if count, err := deployWorker.RebuildRoutes(syncCtx); err != nil {
+		slog.Warn("failed to synchronize caddy proxy routes at startup", "error", err)
+	} else {
+		slog.Info("synchronized caddy routes at startup", "count", count)
+	}
+	syncCancel()
+
 	api.RegisterRoutes(app, state, cfg, deployWorker)
 
 	serverErrors := make(chan error, 1)
