@@ -19,16 +19,6 @@ import (
 	"github.com/SpritexAI/SpritexDock/internal/worker"
 )
 
-// fakeResolverMock overrides domain DNS resolution in tests.
-type fakeResolverMock struct {
-	addresses []string
-	err       error
-}
-
-func (f fakeResolverMock) LookupHost(_ context.Context, _ string) ([]string, error) {
-	return f.addresses, f.err
-}
-
 func TestDomainAPIFlow(t *testing.T) {
 	state, err := db.Open(t.TempDir())
 	if err != nil {
